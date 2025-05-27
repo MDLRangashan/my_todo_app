@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:my_todo_app/l10n/app_localizations.dart';
 import 'package:my_todo_app/screens/sigup/todo_list_screen.dart';
 import 'package:my_todo_app/services/todo_list/todo_list_bloc.dart';
 
@@ -22,6 +23,8 @@ class MyApp extends StatelessWidget {
           foregroundColor: Colors.white,
         ),
       ),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: BlocProvider(
         create: (context) => TodoListBloc()..add(LoadTasks()),
         child: const TodoListScreen(),

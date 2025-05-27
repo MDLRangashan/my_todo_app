@@ -15,3 +15,18 @@ class ToggleTask extends TodoListEvent {
   final bool isCompleted;
   ToggleTask(this.taskId, this.isCompleted);
 }
+
+class AddTask extends TodoListEvent {
+  final Task task;
+  AddTask(this.task);
+}
+
+class DeleteTask extends TodoListEvent {
+  final int taskId;
+  DeleteTask(this.taskId);
+}
+
+class EditTask extends TodoListEvent {
+  final Task task;
+  EditTask(this.task);
+}
