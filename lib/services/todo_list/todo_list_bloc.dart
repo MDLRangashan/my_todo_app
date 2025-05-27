@@ -19,69 +19,103 @@ class TodoListBloc extends Bloc<TodoListEvent, TodoListState> {
     on<LoadTasks>((event, emit) async {
       emit(ToDoListLoading());
       try {
+        // First try to load from SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        final cachedTasksJson = prefs.getStringList('tasks');
+
+        if (cachedTasksJson != null && cachedTasksJson.isNotEmpty) {
+          final tasks =
+              cachedTasksJson
+                  .map((taskJson) => Task.fromJson(json.decode(taskJson)))
+                  .toList();
+          emit(ToDoListLoaded(tasks));
+          return;
+        }
+
+        // If no cached data, fetch from API
         final String _apiUrl = 'https://dummyjson.com/todos';
-        final response = await http.get(Uri.parse(_apiUrl));
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data['todos'] != null && data['todos'] is List) {
-            final tasks = List<Task>.from(
-              data['todos'].map((e) => Task.fromJson(e)),
-            );
-            emit(ToDoListLoaded(tasks));
+        try {
+          final response = await http.get(Uri.parse(_apiUrl));
+          if (response.statusCode == 200) {
+            final data = jsonDecode(response.body);
+            if (data['todos'] != null && data['todos'] is List) {
+              final tasks = List<Task>.from(
+                data['todos'].map((e) => Task.fromJson(e)),
+              );
+              // Cache the fetched tasks
+              await _saveTasksToPrefs(tasks);
+              emit(ToDoListLoaded(tasks));
+            }
+          } else {
+            emit(ToDoListError('Error getting tasks'));
           }
-        } else {
-          emit(ToDoListError('Error getting tasks'));
+        } catch (e) {
+          // If API call fails and we have no cached data, show error
+          emit(
+            ToDoListError(
+              'No internet connection and no cached data available',
+            ),
+          );
         }
       } catch (e) {
-        emit(ToDoListError('Error getting tasks ${e.toString()}'));
+        emit(ToDoListError('Error: ${e.toString()}'));
       }
     });
 
     on<UpdateTaskCompletion>((event, emit) async {
-      try {
-        final updatedTask = event.task;
-        final prefs = await SharedPreferences.getInstance();
-        final taskJson = prefs.getStringList('tasks') ?? [];
+      if (state is ToDoListLoaded) {
+        try {
+          final currentState = state as ToDoListLoaded;
+          final updatedTasks =
+              currentState.tasks.map((task) {
+                if (task.id == event.task.id) {
+                  return Task(
+                    id: task.id,
+                    todo: task.todo,
+                    completed: event.task.completed,
+                    userId: task.userId,
+                  );
+                }
+                return task;
+              }).toList();
 
-        final updateTasks =
-            taskJson.map((taskJson) {
-              final task = Task.fromJson(json.decode(taskJson));
-              if (task.id == updatedTask.id) {
-                task.completed = updatedTask.completed;
-              }
-              return json.encode(task.toJson());
-            }).toList();
-
-        await prefs.setStringList('tasks', updateTasks);
-        add(LoadTasks());
-      } catch (e) {
-        emit(ToDoListError('Error updating task ${e.toString()}'));
+          await _saveTasksToPrefs(updatedTasks);
+          emit(ToDoListLoaded(updatedTasks));
+        } catch (e) {
+          emit(ToDoListError('Error updating task: ${e.toString()}'));
+        }
       }
     });
 
-    Future<void> _saveTasksToPrefs(List<Task> tasks) async {
-      final prefs = await SharedPreferences.getInstance();
-      final tasksJson =
-          tasks.map((task) => json.encode(task.toJson())).toList();
-      await prefs.setStringList('tasks', tasksJson);
-    }
-
-    Future<void> _onToggleTask(
-      ToggleTask event,
-      Emitter<TodoListState> emit,
-    ) async {
+    on<ToggleTask>((event, emit) async {
       if (state is ToDoListLoaded) {
-        final currentTasks = (state as ToDoListLoaded).tasks;
-        final updatedTasks =
-            currentTasks.map((task) {
-              if (task.id == event.taskId) {
-                task.completed = event.isCompleted;
-              }
-              return task;
-            }).toList();
-        await _saveTasksToPrefs(updatedTasks);
-        emit(ToDoListLoaded(updatedTasks));
+        try {
+          final currentState = state as ToDoListLoaded;
+          final updatedTasks =
+              currentState.tasks.map((task) {
+                if (task.id == event.taskId) {
+                  return Task(
+                    id: task.id,
+                    todo: task.todo,
+                    completed: event.isCompleted,
+                    userId: task.userId,
+                  );
+                }
+                return task;
+              }).toList();
+
+          await _saveTasksToPrefs(updatedTasks);
+          emit(ToDoListLoaded(updatedTasks));
+        } catch (e) {
+          emit(ToDoListError('Error toggling task: ${e.toString()}'));
+        }
       }
-    }
+    });
+  }
+
+  Future<void> _saveTasksToPrefs(List<Task> tasks) async {
+    final prefs = await SharedPreferences.getInstance();
+    final tasksJson = tasks.map((task) => json.encode(task.toJson())).toList();
+    await prefs.setStringList('tasks', tasksJson);
   }
 }
